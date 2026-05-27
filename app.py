@@ -1,105 +1,52 @@
 import streamlit as st
 import pandas as pd
-from sklearn.neighbors import KNeighborsRegressor
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
+import numpy as np
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="Crop Yield Prediction",
+    page_title="Crop Yield Predictor",
     page_icon="🌾",
     layout="wide"
 )
 
 # ---------------- TITLE ----------------
 st.title("🌾 Crop Yield Prediction System")
-st.markdown("Predict crop yield using agricultural and environmental factors.")
+st.markdown("Predict estimated crop yield using agricultural factors.")
 
-# ---------------- LOAD DATA & TRAIN MODEL ----------------
-@st.cache_resource
-def load_and_train_model():
-    try:
-        # Load dataset
-        df = pd.read_csv("crop_yield.csv")
+# ---------------- LOAD DATA ----------------
+@st.cache_data
+def load_data():
+    df = pd.read_csv("crop_yield.csv")
+    return df
 
-        # Remove unwanted column if exists
-        df = df.drop(columns=["Crop_Year"], errors="ignore")
+try:
+    df = load_data()
 
-        # Label Encoders
-        crop_encoder = LabelEncoder()
-        state_encoder = LabelEncoder()
-        season_encoder = LabelEncoder()
-
-        # Save original names for dropdown
-        crop_names = sorted(df["Crop"].unique())
-        state_names = sorted(df["State"].unique())
-        season_names = sorted(df["Season"].unique())
-
-        # Encode categorical columns
-        df["Crop"] = crop_encoder.fit_transform(df["Crop"])
-        df["State"] = state_encoder.fit_transform(df["State"])
-        df["Season"] = season_encoder.fit_transform(df["Season"])
-
-        # Features and Target
-        X = df.drop("Yield", axis=1)
-        y = df["Yield"]
-
-        # Train Test Split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X,
-            y,
-            test_size=0.2,
-            random_state=42
-        )
-
-        # Train Model
-        model = KNeighborsRegressor(n_neighbors=5)
-        model.fit(X_train, y_train)
-
-        return (
-            model,
-            crop_encoder,
-            state_encoder,
-            season_encoder,
-            crop_names,
-            state_names,
-            season_names,
-            X.columns
-        )
-
-    except Exception as e:
-        st.error(f"Error Loading Dataset or Training Model: {e}")
-        st.stop()
-
-
-# Load everything
-(
-    model,
-    crop_encoder,
-    state_encoder,
-    season_encoder,
-    crop_names,
-    state_names,
-    season_names,
-    feature_columns
-) = load_and_train_model()
+except Exception as e:
+    st.error(f"Dataset Error: {e}")
+    st.stop()
 
 # ---------------- SIDEBAR ----------------
-st.sidebar.header("📥 Enter Crop Information")
+st.sidebar.header("📥 Enter Agricultural Data")
+
+# Dropdown options
+crop_list = sorted(df["Crop"].unique())
+state_list = sorted(df["State"].unique())
+season_list = sorted(df["Season"].unique())
 
 # ---------------- INPUT SECTION ----------------
 col1, col2 = st.columns(2)
 
 with col1:
-    selected_crop = st.selectbox("🌱 Select Crop", crop_names)
+    crop = st.selectbox("🌱 Select Crop", crop_list)
 
-    selected_state = st.selectbox("📍 Select State", state_names)
+    state = st.selectbox("📍 Select State", state_list)
 
-    selected_season = st.selectbox("☀️ Select Season", season_names)
+    season = st.selectbox("☀️ Select Season", season_list)
 
     area = st.number_input(
         "🌾 Area (Hectares)",
-        min_value=0.0,
+        min_value=1.0,
         value=1000.0
     )
 
@@ -128,39 +75,63 @@ with col2:
         value=500.0
     )
 
-# ---------------- PREDICTION ----------------
+# ---------------- SIMPLE PREDICTION ----------------
 if st.button("🔍 Predict Crop Yield"):
 
     try:
-        # Create Input DataFrame
-        input_data = pd.DataFrame({
-            "Crop": [crop_encoder.transform([selected_crop])[0]],
-            "Season": [season_encoder.transform([selected_season])[0]],
-            "State": [state_encoder.transform([selected_state])[0]],
-            "Area": [area],
-            "Production": [production],
-            "Annual_Rainfall": [rainfall],
-            "Fertilizer": [fertilizer],
-            "Pesticide": [pesticide]
-        })
+        # Simple custom prediction formula
+        estimated_yield = (
+            (production / area)
+            + (rainfall * 0.002)
+            + (fertilizer * 0.00001)
+            - (pesticide * 0.0005)
+        )
 
-        # Match training column order
-        input_data = input_data[feature_columns]
+        estimated_yield = max(estimated_yield, 0)
 
-        # Prediction
-        prediction = model.predict(input_data)
-
-        # ---------------- OUTPUT ----------------
         st.markdown("---")
 
         st.success(
-            f"🌟 Estimated Crop Yield: {float(prediction[0]):.2f} Quintal/Hectare"
+            f"🌟 Estimated Crop Yield: {estimated_yield:.2f} Quintal/Hectare"
         )
 
-        st.info(
-            "Prediction is based on rainfall, fertilizer, pesticide, "
-            "production, area, crop type, season, and state."
-        )
+        # Performance Category
+        if estimated_yield > 80:
+            st.info("Excellent Yield Prediction 🌟")
+
+        elif estimated_yield > 50:
+            st.info("Good Yield Prediction ✅")
+
+        else:
+            st.warning("Low Yield Prediction ⚠️")
+
+        # Display Summary
+        st.subheader("📊 Input Summary")
+
+        summary = pd.DataFrame({
+            "Parameter": [
+                "Crop",
+                "State",
+                "Season",
+                "Area",
+                "Production",
+                "Rainfall",
+                "Fertilizer",
+                "Pesticide"
+            ],
+            "Value": [
+                crop,
+                state,
+                season,
+                area,
+                production,
+                rainfall,
+                fertilizer,
+                pesticide
+            ]
+        })
+
+        st.dataframe(summary, use_container_width=True)
 
     except Exception as e:
         st.error(f"Prediction Error: {e}")
